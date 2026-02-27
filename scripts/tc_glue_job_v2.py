@@ -65,7 +65,6 @@ df = df \
     .dropna(subset=["data_pregao", "preco_fechamento", "ticker"])
 
 # Requisito 5-C: Cálculos baseados em data
-# Média móvel de 5 dias, variação diária percentual e amplitude do pregão
 janela = Window.partitionBy("ticker").orderBy("data_pregao").rowsBetween(-4, 0)
 
 df = df \
@@ -98,12 +97,13 @@ df_final.write \
     .parquet(REFINED_PATH)
 
 # Requisito 7: Catalogação automática no Glue Catalog
+# FIX: Usar CREATE TABLE sem especificar partições no DDL
+# O MSCK REPAIR TABLE descobre as partições automaticamente
 spark.sql(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
 spark.sql(f"DROP TABLE IF EXISTS {DATABASE}.{TABLE_NAME}")
 spark.sql(f"""
     CREATE TABLE {DATABASE}.{TABLE_NAME}
     USING PARQUET
-    PARTITIONED BY (data_particao, ticker)
     LOCATION '{REFINED_PATH}'
 """)
 spark.sql(f"MSCK REPAIR TABLE {DATABASE}.{TABLE_NAME}")
