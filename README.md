@@ -1,18 +1,23 @@
 # 🐍 Pipeline Batch Bovespa — Tech Challenge Fase 2
 
-Pipeline de dados completo para extração, processamento e análise de ações da B3, construído na AWS com Python, S3, Lambda, Glue e Athena.
+Pipeline de dados completo para extração, processamento e análise de ações da B3, construído na AWS com Python, S3, Lambda, Glue, EventBridge e Athena.
 
 ---
 
 ## 📁 Estrutura do Projeto
 
 ```
-pipeline-bovespa/
+tech-challenge-fase2/
 │
-├── tc_scraping.py          # REQ 1-2: Scraping via yfinance + upload S3
-├── tc_lambda.py            # REQ 3-4: Gatilho automático via Lambda
-├── tc_glue_job.py          # REQ 5-6-7: ETL Spark + catalogação Glue
-└── README.md               # Este arquivo
+├── scripts/
+│   ├── tc_scraping.py          # REQ 1-2: Scraping via yfinance + upload S3
+│   ├── tc_lambda.py            # REQ 3-4: Gatilho automático S3 → Glue
+│   ├── tc_lambda_scraping.py   # Scraping via Lambda (acionado pelo EventBridge)
+│   └── tc_glue_job_v3.py       # REQ 5-6-7: ETL Spark + catalogação Glue
+├── docs/
+│   ├── arquitetura_pipeline.html   # Diagrama visual da arquitetura
+│   └── CONFIGURACAO_AWS.md         # Passo a passo de configuração na AWS
+└── README.md
 ```
 
 ---
@@ -20,13 +25,14 @@ pipeline-bovespa/
 ## 🏗️ Arquitetura
 
 ```
-Python (yfinance)
-    → S3 raw/ (Parquet particionado)
-        → Lambda (gatilho S3)
-            → AWS Glue Job (PySpark ETL)
-                → S3 refined/ (Parquet particionado)
-                    → Glue Catalog (tabela catalogada)
-                        → Athena (consultas SQL)
+EventBridge (todo dia às 22h — horário de Brasília)
+    → Lambda de scraping (tc-lambda-scraping)
+        → S3 raw/ (Parquet particionado por data e ticker)
+            → Lambda gatilho (tc-lambda-bovespa)
+                → AWS Glue Job PySpark (tc-etl-bovespa)
+                    → S3 refined/ (Parquet particionado)
+                        → Glue Catalog (tabela catalogada)
+                            → Athena (consultas SQL)
 ```
 
 ---
@@ -39,12 +45,21 @@ Python (yfinance)
 | REQ 2 | Dados brutos no S3 em Parquet com partição diária | `tc_scraping.py` |
 | REQ 3 | Bucket S3 aciona Lambda automaticamente | `tc_lambda.py` |
 | REQ 4 | Lambda inicia o Glue Job | `tc_lambda.py` |
-| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc_glue_job.py` |
-| REQ 5-B | Renomeação de colunas para português | `tc_glue_job.py` |
-| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc_glue_job.py` |
-| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc_glue_job.py` |
-| REQ 7 | Catalogação automática no Glue Catalog | `tc_glue_job.py` |
+| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc_glue_job_v3.py` |
+| REQ 5-B | Renomeação de colunas para português | `tc_glue_job_v3.py` |
+| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc_glue_job_v3.py` |
+| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc_glue_job_v3.py` |
+| REQ 7 | Catalogação automática no Glue Catalog | `tc_glue_job_v3.py` |
 | REQ 8 | Dados consultáveis via SQL no Athena | Glue Catalog |
+
+---
+
+## ➕ Funcionalidade Extra
+
+| Recurso | Descrição |
+|---------|-----------|
+| **EventBridge Schedule** | Agendamento diário às 22h (horário de Brasília) para execução automática do scraping |
+| **Lambda de Scraping** | Função Lambda que executa o scraping sem depender de execução local |
 
 ---
 
@@ -67,36 +82,38 @@ Python (yfinance)
 | Bucket S3 | `techchallenge-bovespa-pipeline` |
 | Pasta Raw | `s3://techchallenge-bovespa-pipeline/raw/` |
 | Pasta Refined | `s3://techchallenge-bovespa-pipeline/refined/` |
+| Pasta Athena | `s3://techchallenge-bovespa-pipeline/athena-results/` |
+| Pasta Scripts | `s3://techchallenge-bovespa-pipeline/scripts/` |
+| Lambda Gatilho | `tc-lambda-bovespa` |
+| Lambda Scraping | `tc-lambda-scraping` |
 | Glue Job | `tc-etl-bovespa` |
+| Glue Version | 5.0 |
+| Worker Type | G.1X — 2 workers |
 | Banco Glue | `tc_bovespa_db` |
 | Tabela Glue | `tc_acoes_refinadas` |
+| EventBridge | `tc-scraping-diario` (cron: `0 22 * * ? *`) |
 | Região | `us-east-1` |
 
 ---
 
 ## 🚀 Como Executar
 
-### 1. Scraping (local ou EC2)
-
+### 1. Pré-requisitos
 ```bash
 pip install yfinance pandas boto3 pyarrow
-python tc_scraping.py
+aws configure  # configurar credenciais AWS
 ```
 
-> Necessário ter credenciais AWS configuradas (`aws configure` ou IAM Role).
+### 2. Scraping manual (local)
+```bash
+python scripts/tc_scraping.py
+```
 
-### 2. Lambda
-- Deploy via console AWS ou AWS CLI
-- Configurar trigger S3 no bucket `techchallenge-bovespa-pipeline`, prefixo `raw/`
-- Runtime: Python 3.11
-- Handler: `tc_lambda.lambda_handler`
-- Permissão necessária: `glue:StartJobRun`
+### 3. Scraping automático
+O EventBridge `tc-scraping-diario` executa automaticamente todo dia às 22h via `tc-lambda-scraping` — sem necessidade de execução manual.
 
-### 3. Glue Job
-- Upload do `tc_glue_job.py` no S3 ou diretamente no console Glue
-- Runtime: Glue 4.0 (Spark)
-- Worker Type: G.1X — 2 workers
-- Permissões necessárias: `s3:GetObject`, `s3:PutObject`, `glue:*`
+### 4. Glue Job
+Após o scraping, a Lambda `tc-lambda-bovespa` dispara automaticamente o job `tc-etl-bovespa` no Glue.
 
 ---
 
@@ -105,7 +122,7 @@ python tc_scraping.py
 ### Raw
 ```
 raw/
-└── data_particao=2025-01-15/
+└── data_particao=2026-02-27/
     ├── ticker=PETR4/
     │   └── dados.parquet
     ├── ticker=VALE3/
@@ -116,7 +133,7 @@ raw/
 ### Refined
 ```
 refined/
-└── data_particao=2025-01-15/
+└── data_particao=2026-02-27/
     ├── ticker=PETR4/
     │   └── part-00000.parquet
     ├── ticker=VALE3/
@@ -150,7 +167,7 @@ refined/
 
 ---
 
-## 🔍 Exemplo de Query Athena
+## 🔍 Exemplos de Query Athena
 
 ```sql
 -- Fechamento e média móvel dos últimos 30 dias — PETR4
@@ -182,6 +199,15 @@ GROUP BY ticker, ano_mes, media_fechamento_mes,
          maximo_mes, minimo_mes, volume_total_mes, qtd_pregoes_mes
 ORDER BY ticker, ano_mes DESC;
 ```
+
+---
+
+## ⚠️ Observações Importantes
+
+- O AWS Academy tem sessões de 4 horas — ao encerrar clique em **End Session**, nunca em **Reset**
+- Os dados e recursos persistem até o final do curso
+- Orçamento limite: **$100** — evite deixar jobs rodando desnecessariamente
+- As credenciais AWS Academy expiram a cada sessão — sempre atualize com `aws configure` ao iniciar um novo lab
 
 ---
 

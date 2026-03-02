@@ -23,7 +23,7 @@ spark.conf.set("spark.sql.legacy.parquet.nanosAsLong", "true")
 job = Job(glueContext)
 job.init(args["JOB_NAME"], args)
 
-BUCKET_NAME  = "techchallenge-bovespa-pipeline"
+BUCKET_NAME  = "techchallenge-bovespa-pipeline1"
 RAW_PATH     = f"s3://{BUCKET_NAME}/raw/"
 REFINED_PATH = f"s3://{BUCKET_NAME}/refined/"
 DATABASE     = "tc_bovespa_db"

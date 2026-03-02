@@ -6,163 +6,153 @@
 ## PRÉ-REQUISITOS
 
 - Conta AWS Academy ativa com laboratório iniciado
-- AWS CLI configurado (ou usar o console web)
+- AWS CLI instalado e configurado
 - Python 3.11+ com as libs: `yfinance`, `pandas`, `boto3`, `pyarrow`
+
+> ⚠️ As credenciais do AWS Academy expiram a cada sessão de 4 horas. Sempre atualize com `aws configure` ao iniciar um novo lab.
 
 ---
 
-## PASSO 1 — Criar o Bucket S3
+## PASSO 1 — Configurar Credenciais AWS
 
-1. Acesse **AWS Console → S3 → Create bucket**
-2. Configure:
-   - **Bucket name:** `techchallenge-bovespa-pipeline`
-   - **Region:** `us-east-1`
-   - **Block public access:** ✅ Deixar bloqueado (padrão)
-3. Clique em **Create bucket**
-4. Dentro do bucket, crie manualmente as pastas:
-   - `raw/`
-   - `refined/`
+1. No AWS Academy, clique em **AWS Details → Show** (ao lado de AWS CLI)
+2. Copie as três linhas com `aws_access_key_id`, `aws_secret_access_key` e `aws_session_token`
+3. No CMD/terminal:
+```bash
+aws configure
+# Preencha: Access Key ID, Secret Access Key, Region (us-east-1), Output (json)
+
+aws configure set aws_session_token SEU_TOKEN_AQUI
+```
+4. Teste:
+```bash
+aws s3 ls
+```
+
+---
+
+## PASSO 2 — Criar o Bucket S3
+
+```bash
+aws s3 mb s3://techchallenge-bovespa-pipeline --region us-east-1
+
+aws s3api put-object --bucket techchallenge-bovespa-pipeline --key raw/
+aws s3api put-object --bucket techchallenge-bovespa-pipeline --key refined/
+aws s3api put-object --bucket techchallenge-bovespa-pipeline --key athena-results/
+aws s3api put-object --bucket techchallenge-bovespa-pipeline --key scripts/
+```
+
+Upload dos scripts para o S3:
+```bash
+aws s3 cp scripts/tc_glue_job_v3.py s3://techchallenge-bovespa-pipeline/scripts/
+aws s3 cp scripts/tc_lambda.py s3://techchallenge-bovespa-pipeline/scripts/
+aws s3 cp scripts/tc_scraping.py s3://techchallenge-bovespa-pipeline/scripts/
+```
 
 > ✅ REQ 2 preparado.
 
 ---
 
-## PASSO 2 — Executar o Scraping
-
-1. No terminal local (ou no Cloud9/EC2), instale as dependências:
-```bash
-pip install yfinance pandas boto3 pyarrow
-```
-
-2. Configure as credenciais AWS:
-```bash
-aws configure
-# Preencha: Access Key, Secret Key, Region (us-east-1), Output (json)
-```
-
-> Se estiver no AWS Academy, copie as credenciais do painel "AWS Details" → "AWS CLI".
-
-3. Execute o script:
-```bash
-python tc_scraping.py
-```
-
-4. Verifique no S3 se a estrutura `raw/data_particao=.../ticker=.../dados.parquet` foi criada.
-
-> ✅ REQ 1 e REQ 2 concluídos.
-
----
-
 ## PASSO 3 — Criar o Glue Job
 
-1. Acesse **AWS Console → AWS Glue → ETL Jobs → Create job**
-2. Selecione **Script editor** → **Upload script** → suba o arquivo `tc_glue_job.py`
-3. Configure:
+1. Console AWS → **AWS Glue → ETL Jobs → Script editor**
+2. Engine: **Spark** → Upload script → selecione `tc_glue_job_v3.py`
+3. Clique em **Create** e configure na aba **Job details**:
    - **Job name:** `tc-etl-bovespa`
-   - **IAM Role:** selecione uma role com permissões para S3 e Glue (ex: `AWSGlueServiceRole`)
-   - **Glue version:** Glue 4.0
-   - **Language:** Python 3
+   - **IAM Role:** `LabRole`
+   - **Glue version:** Glue 5.0
    - **Worker type:** G.1X
    - **Number of workers:** 2
 4. Clique em **Save**
-5. Para testar, clique em **Run** e aguarde o status **Succeeded**
-6. Verifique:
-   - Pasta `refined/` populada no S3
-   - Banco `tc_bovespa_db` e tabela `tc_acoes_refinadas` criados no Glue Catalog
 
-> ✅ REQ 5, REQ 6 e REQ 7 concluídos.
+> ✅ REQ 5, REQ 6 e REQ 7 preparados.
 
 ---
 
-## PASSO 4 — Criar a Função Lambda
+## PASSO 4 — Criar a Lambda de Gatilho
 
-1. Acesse **AWS Console → Lambda → Create function**
+1. Console AWS → **Lambda → Create function**
 2. Configure:
    - **Function name:** `tc-lambda-bovespa`
    - **Runtime:** Python 3.11
-   - **Permissions:** selecione ou crie uma role com permissão `glue:StartJobRun`
-3. Na aba **Code**, cole o conteúdo do arquivo `tc_lambda.py`
+   - **Execution role:** Use existing role → **LabRole**
+3. Cole o conteúdo de `tc_lambda.py` no editor de código
 4. Clique em **Deploy**
 
 ### Adicionar Trigger S3
-
 5. Clique em **Add trigger**
 6. Configure:
    - **Source:** S3
    - **Bucket:** `techchallenge-bovespa-pipeline`
-   - **Event type:** `PUT`
+   - **Event type:** PUT
    - **Prefix:** `raw/`
-7. Clique em **Add**
-
-### Verificar permissão da role Lambda
-
-A role da Lambda precisa ter a seguinte política inline (ou equivalente):
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "glue:StartJobRun",
-      "Resource": "*"
-    }
-  ]
-}
-```
+7. Marque a caixa de confirmação → **Add**
 
 > ✅ REQ 3 e REQ 4 concluídos.
 
 ---
 
-## PASSO 5 — Verificar o Glue Catalog
+## PASSO 5 — Criar a Lambda de Scraping
 
-1. Acesse **AWS Console → AWS Glue → Databases**
-2. Confirme que o banco `tc_bovespa_db` existe
-3. Clique no banco → **Tables** → confirme a tabela `tc_acoes_refinadas`
-4. Clique na tabela e verifique as colunas no schema
-
-> ✅ REQ 7 confirmado.
+1. Console AWS → **Lambda → Create function**
+2. Configure:
+   - **Function name:** `tc-lambda-scraping`
+   - **Runtime:** Python 3.11
+   - **Execution role:** Use existing role → **LabRole**
+3. Cole o conteúdo de `tc_lambda_scraping.py` no editor
+4. Clique em **Deploy**
+5. Vá em **Configuration → General configuration → Edit**:
+   - **Memory:** 512 MB
+   - **Timeout:** 5 min 0 sec
+6. Clique em **Save**
 
 ---
 
-## PASSO 6 — Consultar via Athena
+## PASSO 6 — Criar o EventBridge Schedule
 
-1. Acesse **AWS Console → Athena → Query editor**
-2. No painel lateral, selecione:
-   - **Data source:** AwsDataCatalog
-   - **Database:** `tc_bovespa_db`
-3. Configure o **Query result location** (necessário na primeira vez):
-   - Clique em **Settings → Manage**
-   - Defina: `s3://techchallenge-bovespa-pipeline/athena-results/`
-4. Execute a query de teste:
+1. Console AWS → **EventBridge → Schedules → Create schedule**
+2. Configure:
+   - **Schedule name:** `tc-scraping-diario`
+   - **Occurrence:** Recurring schedule
+   - **Schedule type:** Cron-based
+   - **Cron:** `0 22 * * ? *`
+   - **Timezone:** America/Sao_Paulo
+   - **Flexible time window:** Off
+3. Clique em **Next**
+4. **Target:** AWS Lambda → Invoke → selecione `tc-lambda-scraping`
+5. Clique em **Next**
+6. Em **Permissions → Execution role:** Use existing role → **LabRole**
+7. Clique em **Next → Create schedule**
 
+---
+
+## PASSO 7 — Configurar o Athena
+
+1. Console AWS → **Athena → Launch query editor**
+2. Clique em **Edit settings**
+3. **Query result location:** `s3://techchallenge-bovespa-pipeline/athena-results/`
+4. Clique em **Save**
+
+---
+
+## PASSO 8 — Executar o Pipeline pela Primeira Vez
+
+1. Execute o scraping manualmente:
+```bash
+python scripts/tc_scraping.py
+```
+2. Aguarde os arquivos aparecerem em `s3://.../raw/`
+3. A Lambda dispara automaticamente o Glue Job
+4. Acompanhe em **Glue → Jobs → tc-etl-bovespa → Runs** — aguarde **Succeeded**
+5. Verifique no **Glue Catalog → Databases → tc_bovespa_db → tc_acoes_refinadas**
+6. Teste no Athena:
 ```sql
-SELECT
-    data_pregao,
-    ticker,
-    preco_fechamento,
-    media_movel_5d,
-    variacao_diaria_pct
+SELECT ticker, data_pregao, preco_fechamento, media_movel_5d
 FROM tc_acoes_refinadas
 WHERE ticker = 'PETR4'
 ORDER BY data_pregao DESC
 LIMIT 10;
 ```
-
-> ✅ REQ 8 concluído.
-
----
-
-## PASSO 7 — Teste do Fluxo Completo (End-to-End)
-
-Para confirmar que tudo funciona junto:
-
-1. Execute novamente o `tc_scraping.py`
-2. Aguarde ~1 minuto
-3. Acesse **Lambda → Monitor → Logs** e confirme que a função foi disparada
-4. Acesse **Glue → Jobs → tc-etl-bovespa → Run history** e confirme um novo run **Succeeded**
-5. Execute uma query no Athena e confirme que os dados mais recentes aparecem
 
 ---
 
@@ -170,8 +160,10 @@ Para confirmar que tudo funciona junto:
 
 | Problema | Solução |
 |----------|---------|
-| Lambda não dispara | Verificar se o trigger S3 está com prefixo `raw/` correto |
-| Glue Job com erro de permissão | Adicionar `AmazonS3FullAccess` e `AWSGlueServiceRole` à role |
+| `AccessDenied` no S3 | Atualizar credenciais AWS Academy (`aws configure`) |
+| Lambda não dispara | Verificar se o trigger S3 tem prefixo `raw/` e evento `PUT` |
+| Glue Job `SPECIFY_PARTITION_IS_NOT_ALLOWED` | Usar `tc_glue_job_v3.py` (versão corrigida) |
+| Glue Job `ConcurrentRunsExceeded` | Aguardar — a Lambda já disparou o job automaticamente |
 | Athena sem resultado | Executar `MSCK REPAIR TABLE tc_acoes_refinadas` manualmente |
-| Credenciais AWS Academy expiradas | Reiniciar o laboratório e atualizar as credenciais |
-| Tabela não aparece no Catalog | Verificar se o Glue Job rodou com sucesso até o final |
+| EventBridge sem permissão para criar role | Em Permissions, usar **LabRole** existente em vez de criar nova |
+| Credenciais AWS Academy expiradas | Reiniciar sessão do lab e rodar `aws configure` novamente |

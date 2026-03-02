@@ -11,7 +11,7 @@ import boto3
 import io
 from datetime import datetime, timedelta
 
-BUCKET_NAME = "techchallenge-bovespa-pipeline"
+BUCKET_NAME = "techchallenge-bovespa-pipeline1"
 PREFIX_RAW  = "raw"
 
 TICKERS = [
