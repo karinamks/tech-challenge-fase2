@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Bovespa — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: rgba(255,255,255,0.07);
+    --text: #f1f5f9;
+    --muted: #6b7280;
+    --accent: #ffa500;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+  }
+
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,165,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,165,0,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* TOPBAR */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,14,26,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+
+  .topbar-logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #ffa500, #ff6b00);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .topbar-title { font-size: 16px; font-weight: 600; }
+  .topbar-sub { font-size: 12px; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+
+  .topbar-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(255,165,0,0.1);
+    border: 1px solid rgba(255,165,0,0.25);
+    padding: 4px 12px; border-radius: 20px;
+  }
+
+  /* UPLOAD ZONE */
+  #upload-zone {
+    position: fixed; inset: 0; z-index: 200;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px;
+  }
+
+  .upload-icon { font-size: 64px; }
+
+  .upload-title { font-size: 24px; font-weight: 600; }
+  .upload-sub { font-size: 14px; color: var(--muted); text-align: center; max-width: 400px; line-height: 1.6; }
+
+  .upload-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, #ffa500, #ff6b00);
+    color: #000; font-weight: 700; font-size: 14px;
+    border: none; border-radius: 12px;
+    padding: 14px 28px; cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .upload-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(255,165,0,0.4); }
+
+  #csv-input { display: none; }
+
+  /* MAIN */
+  #main { display: none; padding: 28px 32px; position: relative; z-index: 1; }
+
+  /* FILTER BAR */
+  .filter-bar {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px; flex-wrap: wrap;
+  }
+
+  .filter-label { font-size: 12px; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+  .ticker-btn {
+    padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 12px;
+    font-family: 'Space Mono', monospace; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .ticker-btn.active {
+    background: rgba(255,165,0,0.15);
+    border-color: rgba(255,165,0,0.5);
+    color: var(--accent);
+  }
+  .ticker-btn:hover { border-color: rgba(255,165,0,0.3); color: var(--text); }
+
+  /* KPI CARDS */
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 16px; margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .kpi-card:hover { border-color: rgba(255,165,0,0.3); transform: translateY(-2px); }
+
+  .kpi-label { font-size: 11px; color: var(--muted); font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .kpi-sub { font-size: 11px; color: var(--muted); }
+  .kpi-pos { color: var(--green); }
+  .kpi-neg { color: var(--red); }
+
+  /* GRID */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px; margin-bottom: 16px;
+  }
+
+  .chart-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px; margin-bottom: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 22px;
+  }
+
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .card-sub { font-size: 11px; color: var(--muted); font-family: 'Space Mono', monospace; margin-top: 2px; }
+  .card-badge {
+    font-size: 10px; font-family: 'Space Mono', monospace;
+    padding: 3px 10px; border-radius: 8px;
+    background: rgba(255,165,0,0.1); color: var(--accent);
+    border: 1px solid rgba(255,165,0,0.2);
+  }
+
+  canvas { max-height: 260px; }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    text-align: left; padding: 10px 14px;
+    color: var(--muted); font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #d1d5db; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .ticker-tag {
+    display: inline-block; padding: 2px 10px; border-radius: 6px;
+    font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700;
+  }
+
+  /* FOOTER */
+  .dash-footer {
+    text-align: center; padding: 24px;
+    font-size: 11px; color: #374151;
+    font-family: 'Space Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD -->
+<div id="upload-zone">
+  <div class="upload-icon">📊</div>
+  <div class="upload-title">Dashboard Bovespa</div>
+  <div class="upload-sub">Faça upload do arquivo CSV exportado do Athena para visualizar os dados do pipeline B3</div>
+  <button class="upload-btn" onclick="document.getElementById('csv-input').click()">
+    📂 Carregar CSV do Athena
+  </button>
+  <input type="file" id="csv-input" accept=".csv">
+  <div style="font-size:11px;color:#374151;font-family:'Space Mono',monospace;">
+    tc_bovespa_db · tc_acoes_refinadas
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD -->
+<div id="main">
+
+  <div class="topbar" style="position:relative;margin:-28px -32px 28px -32px;top:0;">
+    <div class="topbar-left">
+      <div class="topbar-logo">📈</div>
+      <div>
+        <div class="topbar-title">Pipeline Bovespa · Dashboard</div>
+        <div class="topbar-sub">tc_bovespa_db · tc_acoes_refinadas · AWS Athena</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-badge" id="data-range">—</div>
+      <div class="topbar-badge">Tech Challenge Fase 2</div>
+    </div>
+  </div>
+
+  <!-- FILTER -->
+  <div class="filter-bar">
+    <span class="filter-label">TICKER:</span>
+    <button class="ticker-btn active" data-ticker="ALL">Todas</button>
+    <button class="ticker-btn" data-ticker="PETR4">PETR4</button>
+    <button class="ticker-btn" data-ticker="VALE3">VALE3</button>
+    <button class="ticker-btn" data-ticker="ITUB4">ITUB4</button>
+    <button class="ticker-btn" data-ticker="BBDC4">BBDC4</button>
+    <button class="ticker-btn" data-ticker="ABEV3">ABEV3</button>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row" id="kpi-row"></div>
+
+  <!-- ROW 1 -->
+  <div class="chart-grid">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Preço de Fechamento + Média Móvel 5d</div>
+          <div class="card-sub">Evolução diária · REQ 5-C</div>
+        </div>
+        <div class="card-badge">Série Temporal</div>
+      </div>
+      <canvas id="chart-price"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Variação Diária %</div>
+          <div class="card-sub">Performance por ação · REQ 5-C</div>
+        </div>
+        <div class="card-badge">Comparativo</div>
+      </div>
+      <canvas id="chart-var"></canvas>
+    </div>
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="chart-grid-3">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Volume Negociado</div>
+          <div class="card-sub">Total por ação · REQ 5-A</div>
+        </div>
+      </div>
+      <canvas id="chart-vol"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Amplitude Diária</div>
+          <div class="card-sub">Máx - Mín por dia · REQ 5-C</div>
+        </div>
+      </div>
+      <canvas id="chart-amp"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Média Mensal</div>
+          <div class="card-sub">Fechamento por mês · REQ 5-A</div>
+        </div>
+      </div>
+      <canvas id="chart-monthly"></canvas>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Dados Detalhados</div>
+        <div class="card-sub">Últimos registros processados pelo Glue · REQ 6</div>
+      </div>
+      <div class="card-badge">Refinado</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Data</th>
+            <th>Fechamento</th>
+            <th>Abertura</th>
+            <th>Máximo</th>
+            <th>Mínimo</th>
+            <th>Variação %</th>
+            <th>MM 5d</th>
+            <th>Volume</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="dash-footer">
+    Tech Challenge Fase 2 · Pipeline Batch Bovespa · AWS S3 + Glue + Athena · us-east-1
+  </div>
+
+</div>
+
+<script>
+const COLORS = {
+  PETR4: '#ffa500', VALE3: '#22c55e',
+  ITUB4: '#3b82f6', BBDC4: '#a855f7', ABEV3: '#06b6d4'
+};
+
+const TICKER_NAMES = {
+  PETR4:'Petrobras', VALE3:'Vale', ITUB4:'Itaú', BBDC4:'Bradesco', ABEV3:'Ambev'
+};
+
+let allData = [];
+let charts = {};
+let activeTicker = 'ALL';
+
+// CSV Upload
+document.getElementById('csv-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true,
+    complete: function(results) {
+      allData = results.data.map(r => ({
+        ticker: r.ticker,
+        data_pregao: r.data_pregao,
+        preco_fechamento: parseFloat(r.preco_fechamento),
+        preco_abertura: parseFloat(r.preco_abertura),
+        preco_maximo: parseFloat(r.preco_maximo),
+        preco_minimo: parseFloat(r.preco_minimo),
+        volume_negociado: parseInt(r.volume_negociado),
+        media_movel_5d: parseFloat(r.media_movel_5d),
+        variacao_diaria_pct: parseFloat(r.variacao_diaria_pct),
+        amplitude_diaria: parseFloat(r.amplitude_diaria),
+        ano_mes: r.ano_mes,
+        media_fechamento_mes: parseFloat(r.media_fechamento_mes),
+        volume_total_mes: parseInt(r.volume_total_mes)
+      })).filter(r => r.data_pregao);
+      document.getElementById('upload-zone').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      initDashboard();
+    }
+  });
+});
+
+// Filter buttons
+document.querySelectorAll('.ticker-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.ticker-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    activeTicker = this.dataset.ticker;
+    updateDashboard();
+  });
+});
+
+function getFiltered() {
+  if (activeTicker === 'ALL') return allData;
+  return allData.filter(r => r.ticker === activeTicker);
+}
+
+function initDashboard() {
+  const dates = allData.map(r => r.data_pregao).sort();
+  document.getElementById('data-range').textContent = `${dates[0]} → ${dates[dates.length-1]}`;
+  updateDashboard();
+}
+
+function updateDashboard() {
+  const data = getFiltered();
+  renderKPIs(data);
+  renderPriceChart(data);
+  renderVarChart(data);
+  renderVolChart(data);
+  renderAmpChart(data);
+  renderMonthlyChart(data);
+  renderTable(data);
+}
+
+function renderKPIs(data) {
+  const tickers = [...new Set(data.map(r => r.ticker))];
+  const container = document.getElementById('kpi-row');
+
+  if (activeTicker === 'ALL') {
+    // Show per-ticker KPIs
+    container.style.gridTemplateColumns = 'repeat(5, 1fr)';
+    container.innerHTML = tickers.map(t => {
+      const td = data.filter(r => r.ticker === t);
+      const last = td[td.length - 1];
+      const first = td[0];
+      const perf = ((last.preco_fechamento - first.preco_fechamento) / first.preco_fechamento * 100).toFixed(2);
+      const cls = perf >= 0 ? 'kpi-pos' : 'kpi-neg';
+      const arrow = perf >= 0 ? '▲' : '▼';
+      return `<div class="kpi-card">
+        <div class="kpi-label">${t} · ${TICKER_NAMES[t]}</div>
+        <div class="kpi-value">R$ ${last.preco_fechamento.toFixed(2)}</div>
+        <div class="kpi-sub ${cls}">${arrow} ${Math.abs(perf)}% no período</div>
+      </div>`;
+    }).join('');
+  } else {
+    const td = data;
+    const last = td[td.length - 1];
+    const avgVol = (td.reduce((s,r) => s + r.volume_negociado, 0) / td.length / 1e6).toFixed(1);
+    const avgVar = (td.reduce((s,r) => s + r.variacao_diaria_pct, 0) / td.length).toFixed(4);
+    const maxP = Math.max(...td.map(r => r.preco_maximo)).toFixed(2);
+    const minP = Math.min(...td.map(r => r.preco_minimo)).toFixed(2);
+    const mm = last.media_movel_5d.toFixed(4);
+
+    container.style.gridTemplateColumns = 'repeat(5, 1fr)';
+    container.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Último Fechamento</div><div class="kpi-value">R$ ${last.preco_fechamento.toFixed(2)}</div><div class="kpi-sub">${last.data_pregao}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Média Móvel 5d</div><div class="kpi-value">R$ ${mm}</div><div class="kpi-sub">REQ 5-C</div></div>
+      <div class="kpi-card"><div class="kpi-label">Máximo do Período</div><div class="kpi-value">R$ ${maxP}</div><div class="kpi-sub">REQ 5-A</div></div>
+      <div class="kpi-card"><div class="kpi-label">Mínimo do Período</div><div class="kpi-value">R$ ${minP}</div><div class="kpi-sub">REQ 5-A</div></div>
+      <div class="kpi-card"><div class="kpi-label">Vol. Médio Diário</div><div class="kpi-value">${avgVol}M</div><div class="kpi-sub">Var. média: ${avgVar}%</div></div>
+    `;
+  }
+}
+
+const chartDefaults = {
+  plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+    y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+  }
+};
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function renderPriceChart(data) {
+  destroyChart('price');
+  const ctx = document.getElementById('chart-price').getContext('2d');
+  const tickers = activeTicker === 'ALL' ? [...new Set(data.map(r => r.ticker))] : [activeTicker];
+  const dates = [...new Set(data.map(r => r.data_pregao))].sort();
+
+  const datasets = [];
+  tickers.forEach(t => {
+    const td = data.filter(r => r.ticker === t);
+    const priceMap = Object.fromEntries(td.map(r => [r.data_pregao, r.preco_fechamento]));
+    const mmMap = Object.fromEntries(td.map(r => [r.data_pregao, r.media_movel_5d]));
+    datasets.push({
+      label: t,
+      data: dates.map(d => priceMap[d] ?? null),
+      borderColor: COLORS[t], backgroundColor: 'transparent',
+      borderWidth: 2, pointRadius: 2, tension: 0.3
+    });
+    if (activeTicker !== 'ALL') {
+      datasets.push({
+        label: 'MM 5d',
+        data: dates.map(d => mmMap[d] ?? null),
+        borderColor: '#ffa500', backgroundColor: 'transparent',
+        borderWidth: 1.5, borderDash: [5,3], pointRadius: 0, tension: 0.3
+      });
+    }
+  });
+
+  charts['price'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: dates, datasets },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true }
+  });
+}
+
+function renderVarChart(data) {
+  destroyChart('var');
+  const ctx = document.getElementById('chart-var').getContext('2d');
+  const tickers = [...new Set(data.map(r => r.ticker))];
+  const avgVar = tickers.map(t => {
+    const td = data.filter(r => r.ticker === t);
+    return (td.reduce((s,r) => s + r.variacao_diaria_pct, 0) / td.length);
+  });
+
+  charts['var'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: tickers,
+      datasets: [{
+        label: 'Variação Média %',
+        data: avgVar,
+        backgroundColor: tickers.map(t => COLORS[t] + 'cc'),
+        borderColor: tickers.map(t => COLORS[t]),
+        borderWidth: 1, borderRadius: 6
+      }]
+    },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } } }
+  });
+}
+
+function renderVolChart(data) {
+  destroyChart('vol');
+  const ctx = document.getElementById('chart-vol').getContext('2d');
+  const tickers = [...new Set(data.map(r => r.ticker))];
+  const totalVol = tickers.map(t =>
+    data.filter(r => r.ticker === t).reduce((s,r) => s + r.volume_negociado, 0) / 1e6
+  );
+
+  charts['vol'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: tickers,
+      datasets: [{
+        data: totalVol,
+        backgroundColor: tickers.map(t => COLORS[t] + 'bb'),
+        borderColor: tickers.map(t => COLORS[t]),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 10 }, padding: 10 } } }
+    }
+  });
+}
+
+function renderAmpChart(data) {
+  destroyChart('amp');
+  const ctx = document.getElementById('chart-amp').getContext('2d');
+  const tickers = activeTicker === 'ALL' ? [...new Set(data.map(r => r.ticker))] : [activeTicker];
+  const dates = [...new Set(data.map(r => r.data_pregao))].sort().slice(-20);
+
+  const datasets = tickers.map(t => {
+    const td = data.filter(r => r.ticker === t);
+    const ampMap = Object.fromEntries(td.map(r => [r.data_pregao, r.amplitude_diaria]));
+    return {
+      label: t, data: dates.map(d => ampMap[d] ?? null),
+      backgroundColor: COLORS[t] + '66', borderColor: COLORS[t],
+      borderWidth: 1, borderRadius: 4
+    };
+  });
+
+  charts['amp'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: dates.map(d => d.slice(5)), datasets },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { labels: { color: '#9ca3af', font: { size: 10 } } } } }
+  });
+}
+
+function renderMonthlyChart(data) {
+  destroyChart('monthly');
+  const ctx = document.getElementById('chart-monthly').getContext('2d');
+  const tickers = [...new Set(data.map(r => r.ticker))];
+  const months = [...new Set(data.map(r => r.ano_mes))].sort();
+
+  const datasets = tickers.map(t => {
+    const byMonth = months.map(m => {
+      const rows = data.filter(r => r.ticker === t && r.ano_mes === m);
+      if (!rows.length) return null;
+      return rows[0].media_fechamento_mes;
+    });
+    return {
+      label: t, data: byMonth,
+      borderColor: COLORS[t], backgroundColor: 'transparent',
+      borderWidth: 2, pointRadius: 5, tension: 0.3,
+      pointBackgroundColor: COLORS[t]
+    };
+  });
+
+  charts['monthly'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: months, datasets },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true }
+  });
+}
+
+function renderTable(data) {
+  const sorted = [...data].sort((a,b) => b.data_pregao.localeCompare(a.data_pregao)).slice(0, 30);
+  const body = document.getElementById('table-body');
+  body.innerHTML = sorted.map(r => {
+    const cls = r.variacao_diaria_pct >= 0 ? 'pos' : 'neg';
+    const arrow = r.variacao_diaria_pct >= 0 ? '▲' : '▼';
+    const color = COLORS[r.ticker];
+    return `<tr>
+      <td><span class="ticker-tag" style="background:${color}22;color:${color};border:1px solid ${color}44">${r.ticker}</span></td>
+      <td>${r.data_pregao}</td>
+      <td>R$ ${r.preco_fechamento.toFixed(2)}</td>
+      <td>R$ ${r.preco_abertura.toFixed(2)}</td>
+      <td>R$ ${r.preco_maximo.toFixed(2)}</td>
+      <td>R$ ${r.preco_minimo.toFixed(2)}</td>
+      <td class="${cls}">${arrow} ${Math.abs(r.variacao_diaria_pct).toFixed(4)}%</td>
+      <td>R$ ${r.media_movel_5d.toFixed(4)}</td>
+      <td>${(r.volume_negociado/1e6).toFixed(2)}M</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

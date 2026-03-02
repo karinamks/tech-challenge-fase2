@@ -10,10 +10,10 @@ Pipeline de dados completo para extração, processamento e análise de ações 
 tech-challenge-fase2/
 │
 ├── scripts/
-│   ├── tc_scraping.py          # REQ 1-2: Scraping via yfinance + upload S3
-│   ├── tc_lambda.py            # REQ 3-4: Gatilho automático S3 → Glue
-│   ├── tc_lambda_scraping.py   # Scraping via Lambda (acionado pelo EventBridge)
-│   └── tc_glue_job_v3.py       # REQ 5-6-7: ETL Spark + catalogação Glue
+│   ├── tc_scraping.py          # Scraping via yfinance + upload S3
+│   ├── tc_lambda_glue.py            # Gatilho automático S3 → Glue
+│   ├── tc-lambda-eventbridge.py   # Scraping via Lambda (acionado pelo EventBridge)
+│   └── tc_glue_job_v2.py       # ETL Spark + catalogação Glue
 ├── docs/
 │   ├── arquitetura_pipeline.html   # Diagrama visual da arquitetura
 │   └── CONFIGURACAO_AWS.md         # Passo a passo de configuração na AWS
@@ -29,7 +29,7 @@ EventBridge (todo dia às 22h — horário de Brasília)
     → Lambda de scraping (tc-lambda-scraping)
         → S3 raw/ (Parquet particionado por data e ticker)
             → Lambda gatilho (tc-lambda-bovespa)
-                → AWS Glue Job PySpark (tc-etl-bovespa)
+                → AWS Glue Job PySpark (tc-etl-bovespa1)
                     → S3 refined/ (Parquet particionado)
                         → Glue Catalog (tabela catalogada)
                             → Athena (consultas SQL)
@@ -43,13 +43,13 @@ EventBridge (todo dia às 22h — horário de Brasília)
 |-----------|-----------|--------|
 | REQ 1 | Scraping diário de ações da B3 via yfinance | `tc_scraping.py` |
 | REQ 2 | Dados brutos no S3 em Parquet com partição diária | `tc_scraping.py` |
-| REQ 3 | Bucket S3 aciona Lambda automaticamente | `tc_lambda.py` |
-| REQ 4 | Lambda inicia o Glue Job | `tc_lambda.py` |
-| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc_glue_job_v3.py` |
-| REQ 5-B | Renomeação de colunas para português | `tc_glue_job_v3.py` |
-| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc_glue_job_v3.py` |
-| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc_glue_job_v3.py` |
-| REQ 7 | Catalogação automática no Glue Catalog | `tc_glue_job_v3.py` |
+| REQ 3 | Bucket S3 aciona Lambda automaticamente | `tc_lambda_glue.py` |
+| REQ 4 | Lambda inicia o Glue Job | `tc_lambda_glue.py` |
+| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc_glue_job_v2.py` |
+| REQ 5-B | Renomeação de colunas para português | `tc_glue_job_v2.py` |
+| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc_glue_job_v2.py` |
+| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc_glue_job_v2.py` |
+| REQ 7 | Catalogação automática no Glue Catalog | `tc_glue_job_v2.py` |
 | REQ 8 | Dados consultáveis via SQL no Athena | Glue Catalog |
 
 ---
@@ -79,14 +79,14 @@ EventBridge (todo dia às 22h — horário de Brasília)
 
 | Recurso | Nome/Valor |
 |---------|-----------|
-| Bucket S3 | `techchallenge-bovespa-pipeline` |
-| Pasta Raw | `s3://techchallenge-bovespa-pipeline/raw/` |
-| Pasta Refined | `s3://techchallenge-bovespa-pipeline/refined/` |
-| Pasta Athena | `s3://techchallenge-bovespa-pipeline/athena-results/` |
-| Pasta Scripts | `s3://techchallenge-bovespa-pipeline/scripts/` |
+| Bucket S3 | `techchallenge-bovespa-pipeline1` |
+| Pasta Raw | `s3://techchallenge-bovespa-pipeline1/raw/` |
+| Pasta Refined | `s3://techchallenge-bovespa-pipeline1/refined/` |
+| Pasta Athena | `s3://techchallenge-bovespa-pipeline1/athena-results/` |
+| Pasta Scripts | `s3://techchallenge-bovespa-pipeline1/scripts/` |
 | Lambda Gatilho | `tc-lambda-bovespa` |
 | Lambda Scraping | `tc-lambda-scraping` |
-| Glue Job | `tc-etl-bovespa` |
+| Glue Job | `tc-etl-bovespa1` |
 | Glue Version | 5.0 |
 | Worker Type | G.1X — 2 workers |
 | Banco Glue | `tc_bovespa_db` |
@@ -113,7 +113,7 @@ python scripts/tc_scraping.py
 O EventBridge `tc-scraping-diario` executa automaticamente todo dia às 22h via `tc-lambda-scraping` — sem necessidade de execução manual.
 
 ### 4. Glue Job
-Após o scraping, a Lambda `tc-lambda-bovespa` dispara automaticamente o job `tc-etl-bovespa` no Glue.
+Após o scraping, a Lambda `tc-lambda-bovespa` dispara automaticamente o job `tc-etl-bovespa1` no Glue.
 
 ---
 
@@ -167,21 +167,18 @@ refined/
 
 ---
 
-## 🔍 Exemplos de Query Athena
+## 🔍 Queries Athena Utilizadas
 
 ```sql
--- Fechamento e média móvel dos últimos 30 dias — PETR4
+-- Resumo geral por ticker: variação média, maior e menor preço
 SELECT
-    data_pregao,
     ticker,
-    preco_fechamento,
-    media_movel_5d,
-    variacao_diaria_pct,
-    amplitude_diaria
+    ROUND(AVG(variacao_diaria_pct), 4) AS media_variacao,
+    ROUND(MAX(preco_maximo), 2) AS maior_preco,
+    ROUND(MIN(preco_minimo), 2) AS menor_preco
 FROM tc_bovespa_db.tc_acoes_refinadas
-WHERE ticker = 'PETR4'
-ORDER BY data_pregao DESC
-LIMIT 30;
+GROUP BY ticker
+ORDER BY media_variacao DESC;
 ```
 
 ```sql
@@ -197,17 +194,28 @@ SELECT
 FROM tc_bovespa_db.tc_acoes_refinadas
 GROUP BY ticker, ano_mes, media_fechamento_mes,
          maximo_mes, minimo_mes, volume_total_mes, qtd_pregoes_mes
-ORDER BY ticker, ano_mes DESC;
+ORDER BY ticker, ano_mes;
 ```
 
----
-
-## ⚠️ Observações Importantes
-
-- O AWS Academy tem sessões de 4 horas — ao encerrar clique em **End Session**, nunca em **Reset**
-- Os dados e recursos persistem até o final do curso
-- Orçamento limite: **$100** — evite deixar jobs rodando desnecessariamente
-- As credenciais AWS Academy expiram a cada sessão — sempre atualize com `aws configure` ao iniciar um novo lab
+```sql
+-- Visão completa diária — base para o dashboard
+SELECT
+    ticker,
+    data_pregao,
+    preco_fechamento,
+    preco_abertura,
+    preco_maximo,
+    preco_minimo,
+    volume_negociado,
+    media_movel_5d,
+    variacao_diaria_pct,
+    amplitude_diaria,
+    ano_mes,
+    media_fechamento_mes,
+    volume_total_mes
+FROM tc_bovespa_db.tc_acoes_refinadas
+ORDER BY ticker, data_pregao;
+```
 
 ---
 
