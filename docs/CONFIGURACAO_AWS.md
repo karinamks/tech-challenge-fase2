@@ -163,7 +163,6 @@ LIMIT 10;
 |----------|---------|
 | `AccessDenied` no S3 | Atualizar credenciais AWS Academy (`aws configure`) |
 | Lambda não dispara | Verificar se o trigger S3 tem prefixo `raw/` e evento `PUT` |
-| Glue Job `SPECIFY_PARTITION_IS_NOT_ALLOWED` | Usar `tc_glue_job_v3.py` (versão corrigida) |
 | Glue Job `ConcurrentRunsExceeded` | Aguardar — a Lambda já disparou o job automaticamente |
 | Athena sem resultado | Executar `MSCK REPAIR TABLE tc_acoes_refinadas` manualmente |
 | EventBridge sem permissão para criar role | Em Permissions, usar **LabRole** existente em vez de criar nova |
