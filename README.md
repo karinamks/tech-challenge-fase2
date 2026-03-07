@@ -11,9 +11,9 @@ tech-challenge-fase2/
 │
 ├── scripts/
 │   ├── tc_scraping.py          # Scraping via yfinance + upload S3
-│   ├── tc_lambda_glue.py            # Gatilho automático S3 → Glue
-│   ├── tc-lambda-eventbridge.py   # Scraping via Lambda (acionado pelo EventBridge)
-│   └── tc_glue_job_v2.py       # ETL Spark + catalogação Glue
+│   ├── tc_lambda.py            # Gatilho automático S3 → Glue
+│   ├── tc_lambda_scraping.py   # Scraping via Lambda (acionado pelo EventBridge)
+│   └── tc-etl-bovespa1.py       # ETL Spark + catalogação Glue
 ├── docs/
 │   ├── arquitetura_pipeline.html   # Diagrama visual da arquitetura
 │   └── CONFIGURACAO_AWS.md         # Passo a passo de configuração na AWS
@@ -43,13 +43,13 @@ EventBridge (todo dia às 22h — horário de Brasília)
 |-----------|-----------|--------|
 | REQ 1 | Scraping diário de ações da B3 via yfinance | `tc_scraping.py` |
 | REQ 2 | Dados brutos no S3 em Parquet com partição diária | `tc_scraping.py` |
-| REQ 3 | Bucket S3 aciona Lambda automaticamente | `tc_lambda_glue.py` |
-| REQ 4 | Lambda inicia o Glue Job | `tc_lambda_glue.py` |
-| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc_glue_job_v2.py` |
-| REQ 5-B | Renomeação de colunas para português | `tc_glue_job_v2.py` |
-| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc_glue_job_v2.py` |
-| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc_glue_job_v2.py` |
-| REQ 7 | Catalogação automática no Glue Catalog | `tc_glue_job_v2.py` |
+| REQ 3 | Bucket S3 aciona Lambda automaticamente | `tc_lambda.py` |
+| REQ 4 | Lambda inicia o Glue Job | `tc_lambda.py` |
+| REQ 5-A | Agrupamento mensal por ticker (média, máx, mín, volume) | `tc-etl-bovespa1.py` |
+| REQ 5-B | Renomeação de colunas para português | `tc-etl-bovespa1.py` |
+| REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc-etl-bovespa1.py` |
+| REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc-etl-bovespa1.py` |
+| REQ 7 | Catalogação automática no Glue Catalog | `tc-etl-bovespa1.py` |
 | REQ 8 | Dados consultáveis via SQL no Athena | Glue Catalog |
 
 ---

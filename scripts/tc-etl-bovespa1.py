@@ -1,3 +1,10 @@
+# Script: tc-etl-bovespa1.py
+# Descrição: Job ETL no AWS Glue que lê os dados brutos da B3 no S3,
+#            aplica transformações com PySpark (renomeação de colunas,
+#            cálculos baseados em data e agrupamento mensal por ticker),
+#            salva os dados refinados em Parquet particionado e cataloga
+#            automaticamente a tabela no Glue Catalog.
+
 import sys
 from awsglue.transforms import *
 from awsglue.utils import getResolvedOptions
