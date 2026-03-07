@@ -45,7 +45,7 @@ aws s3api put-object --bucket techchallenge-bovespa-pipeline1 --key scripts/
 
 Upload dos scripts para o S3:
 ```bash
-aws s3 cp scripts/tc_glue_job_v3.py s3://techchallenge-bovespa-pipeline1/scripts/
+aws s3 cp scripts/tc-etl-bovespa1.py s3://techchallenge-bovespa-pipeline1/scripts/
 aws s3 cp scripts/tc_lambda.py s3://techchallenge-bovespa-pipeline1/scripts/
 aws s3 cp scripts/tc_scraping.py s3://techchallenge-bovespa-pipeline1/scripts/
 ```
@@ -57,9 +57,9 @@ aws s3 cp scripts/tc_scraping.py s3://techchallenge-bovespa-pipeline1/scripts/
 ## PASSO 3 — Criar o Glue Job
 
 1. Console AWS → **AWS Glue → ETL Jobs → Script editor**
-2. Engine: **Spark** → Upload script → selecione `tc_glue_job_v3.py`
+2. Engine: **Spark** → Upload script → selecione `tc-etl-bovespa1.py`
 3. Clique em **Create** e configure na aba **Job details**:
-   - **Job name:** `tc-etl-bovespa`
+   - **Job name:** `tc-etl-bovespa1`
    - **IAM Role:** `LabRole`
    - **Glue version:** Glue 5.0
    - **Worker type:** G.1X
@@ -144,7 +144,7 @@ python scripts/tc_scraping.py
 ```
 2. Aguarde os arquivos aparecerem em `s3://.../raw/`
 3. A Lambda dispara automaticamente o Glue Job
-4. Acompanhe em **Glue → Jobs → tc-etl-bovespa → Runs** — aguarde **Succeeded**
+4. Acompanhe em **Glue → Jobs → tc-etl-bovespa1 → Runs** — aguarde **Succeeded**
 5. Verifique no **Glue Catalog → Databases → tc_bovespa_db → tc_acoes_refinadas**
 6. Teste no Athena:
 ```sql
@@ -163,7 +163,7 @@ LIMIT 10;
 |----------|---------|
 | `AccessDenied` no S3 | Atualizar credenciais AWS Academy (`aws configure`) |
 | Lambda não dispara | Verificar se o trigger S3 tem prefixo `raw/` e evento `PUT` |
-| Glue Job `SPECIFY_PARTITION_IS_NOT_ALLOWED` | Usar `tc_glue_job_v3.py` (versão corrigida) |
+| Glue Job `SPECIFY_PARTITION_IS_NOT_ALLOWED` | Usar `tc-etl-bovespa1.py` (versão corrigida) |
 | Glue Job `ConcurrentRunsExceeded` | Aguardar — a Lambda já disparou o job automaticamente |
 | Athena sem resultado | Executar `MSCK REPAIR TABLE tc_acoes_refinadas` manualmente |
 | EventBridge sem permissão para criar role | Em Permissions, usar **LabRole** existente em vez de criar nova |

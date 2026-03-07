@@ -13,7 +13,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Nome do Glue Job — deve ser o mesmo nome cadastrado na AWS
-GLUE_JOB_NAME = "tc-etl-bovespa"
+GLUE_JOB_NAME = "tc-etl-bovespa1"
 
 
 def lambda_handler(event, context):
@@ -42,8 +42,33 @@ def lambda_handler(event, context):
         logger.error(f"    [ERRO] Falha ao processar evento S3: {e}")
         raise
 
-    # Aciona o Glue Job
+    # Evita múltiplos disparos concorrentes do mesmo job durante uploads em lote
+    # (cada PUT no S3 pode acionar a Lambda).
     glue_client = boto3.client("glue")
+    try:
+        active_runs = glue_client.get_job_runs(
+            JobName=GLUE_JOB_NAME,
+            MaxResults=10
+        ).get("JobRuns", [])
+        has_active_run = any(
+            run.get("JobRunState") in {"STARTING", "RUNNING", "STOPPING"}
+            for run in active_runs
+        )
+        if has_active_run:
+            logger.info("    [IGNORADO] Já existe execução ativa do Glue Job. Novo disparo será ignorado.")
+            return {
+                "statusCode": 202,
+                "body": json.dumps({
+                    "message": "Glue Job já está em execução; disparo ignorado para evitar concorrência.",
+                    "glueJob": GLUE_JOB_NAME,
+                    "s3Bucket": bucket,
+                    "s3Key": s3_key,
+                })
+            }
+    except Exception as e:
+        logger.warning(f"    [AVISO] Não foi possível validar execuções ativas do Glue: {e}")
+
+    # Aciona o Glue Job
 
     try:
         response = glue_client.start_job_run(
