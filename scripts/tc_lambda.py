@@ -1,5 +1,4 @@
 """
-Tech Challenge - Fase 2
 Script: tc_lambda.py
 Descrição: Função Lambda que é acionada por eventos S3 (PUT de novos arquivos)
            e dispara o Job ETL no AWS Glue automaticamente.
@@ -13,7 +12,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Nome do Glue Job — deve ser o mesmo nome cadastrado na AWS
-GLUE_JOB_NAME = "tc-etl-bovespa"
+GLUE_JOB_NAME = "tc-etl-bovespa1"
 
 
 def lambda_handler(event, context):
