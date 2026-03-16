@@ -1,5 +1,4 @@
 """
-Tech Challenge - Fase 2
 Script: tc_lambda.py
 Descrição: Função Lambda que é acionada por eventos S3 (PUT de novos arquivos)
            e dispara o Job ETL no AWS Glue automaticamente.
