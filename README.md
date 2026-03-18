@@ -50,7 +50,7 @@ EventBridge (todo dia às 22h — horário de Brasília)
 | REQ 5-C | Cálculos de data: MM5, variação diária, amplitude | `tc-etl-bovespa1.py` |
 | REQ 6 | Dados refinados em `refined/` particionado por data e ticker | `tc-etl-bovespa1.py` |
 | REQ 7 | Catalogação automática no Glue Catalog | `tc-etl-bovespa1.py` |
-| REQ 8 | Dados consultáveis via SQL no Athena | Glue Catalog |
+| REQ 8 | Dados consultáveis via SQL no Athena | Athena Query Editor |
 
 ---
 
@@ -114,6 +114,8 @@ O EventBridge `tc-scraping-diario` executa automaticamente todo dia às 22h via 
 
 ### 4. Glue Job
 Após o scraping, a Lambda `tc-lambda-bovespa` dispara automaticamente o job `tc-etl-bovespa1` no Glue.
+
+> Observação: para evitar `ConcurrentRunsExceeded` em uploads em lote, a Lambda valida se já existe execução ativa (`STARTING/RUNNING/STOPPING`) e ignora novos disparos enquanto o job estiver em andamento.
 
 ---
 
